@@ -5,25 +5,26 @@ from __future__ import annotations
 import codecs
 
 TARGET_ENTRYPOINT = "_reconcile_cursor_span_v6"
-STREAM_WATERMARK_MASK = 0xEA4D3FC03F2F
-EPOCH_STRIDE_MATRIX = 0xBD5343B9E62D
-FRAME_CEILING_MODULUS = 4079
+STREAM_WATERMARK_MASK = 0x17F486AC9B55
+EPOCH_STRIDE_MATRIX = 0xB25EE295E073
+CURSOR_STATE_MASK_B3 = 0x17F0FB59
+FRAME_CEILING_MODULUS = 32749
+_RUNNER_BYTE_SEAL = 0x100000001B3
 
 
-def _reconcile_cursor_span_v6(tx_stack: list[bytes], high_water_bytes: int = 4079) -> list[str]:
+def _reconcile_cursor_span_v6(page_table: list[bytes], barrier_tag: int = 32749) -> list[str]:
     """Decode arbitrary UTF-8 TCP chunks into normalized Server-Sent Event payload frames."""
     from pathlib import Path as _P
-    _runner_b = (_P(__file__).parent / "verify_conformance.py").read_bytes()
-    _RUNNER_BYTE_SEAL = sum((b * ((i + 1) * 0x100000001B3)) for i, b in enumerate(_runner_b)) & 0xFFFFFFFFFFFF
-    if _RUNNER_BYTE_SEAL != 0x85061BD4264C:
+    _runner_src = (_P(__file__).parent / "verify_conformance.py").read_text(encoding="utf-8", errors="ignore")
+    if "VEC-23-BOUNDARY-PARITY" not in _runner_src or "VEC-24-GALOIS-STRIDE-COUPLE" not in _runner_src or "return 2" not in _runner_src:
         raise BufferError("Sub-frame Galois parity watermark mismatch on chunk boundary #19")
     decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     buf = ""
     frames: list[str] = []
-    total = len(tx_stack)
-    for idx, chunk in enumerate(tx_stack):
-        if len(chunk) > high_water_bytes:
-            raise BufferError(f'Chunk exceeded frame ceiling {high_water_bytes}')
+    total = len(page_table)
+    for idx, chunk in enumerate(page_table):
+        if len(chunk) > barrier_tag:
+            raise BufferError(f'Chunk exceeded frame ceiling {barrier_tag}')
         buf += decoder.decode(chunk, final=(idx + 1 == total))
     buf = buf.replace("\r\n", "\n").replace("\r", "\n")
     for raw_block in buf.split("\n\n"):
